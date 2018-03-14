@@ -31,44 +31,89 @@ DATASETS_PATH = os.path.join(DEEP_QUANT_ROOT, 'datasets')
 
 class BatchGenerator(object):
     """
-    BatchGenerator takes a data file and returns an object with a next_batch()
-    function. The next_batch() function yields a batch of data sequences from
-    the datafile whose shape is specified by config.batch_size and
-    config.max_unrollings.
+    A `BatchGenerator` object has a `next_batch` method that yields a batch of
+    data sequences from the datafile whose shape is specified by
+    `config.batch_size` and config.max_unrollings.
+    
+    A `BatchGenerator` can be initiated either by reading data from a .dat file
+    or by passing the data explicitly, as a Pandas DataFrame.
     """
     def __init__(self, datpath, config, validation=True, require_targets=True,
                      data=None, verbose=True):
-        """
-        Init a BatchGenerator.
-        Data is loaded as a Pandas DataFrame and stored in the `_data`
+        """Initalizes a `BatchGenerator`.
+
+        Unless passed to the constructor explicitly using the `data` parameter
+        (must be passed as a Pandas DataFrame), data is loaded as a Pandas
+        DataFrame (from the .dat file at datpath) and stored in the `_data`
         attribute.
-        Sequences of length config.max_unrollings are identified; the start and
-        end indices of these sequences are stored in the _start_indices and
-        _end_indices attributes of our BatchGenerator object, respectively. 
-        (These are both lists of equal length that indicate the indices of the
-        start and of the end of the sequence, within the _data DataFrame.)
-        Indices are set up to access config.batch_size of these sequences as a
+
+        Sequences of length `config.max_unrollings` are identified; the start
+        and end indices of these sequences are stored in the `_start_indices`
+        and `_end_indices` attributes of our `BatchGenerator` object,
+        respectively.  (These are both lists of equal length that indicate the
+        indices of the start and of the end of every sequence that can be made
+        from data stored in the `_data` DataFrame.)
+
+        Indices are set up to access `config.batch_size` of these sequences as a
         batch; these are set up in such way that these sequences are "far apart"
-        from each other in _data (they're num_batches rows away from each other,
-        more specifically). This way it's unlikely that more than one sequence
-        corresponds to the same company in a batch.
+        from each other in `_data` (more specifically, they're `_num_batches`
+        spots away from each other in `_starat_indices` and `_end_indices`).
+        This way it's unlikely that more than one sequence corresponds to the
+        same company in a batch.
+
+        This constructor also sets up an `_index_cursor` attribute and a
+        `_batch_cursor` attribute. The former is a Python list that contains
+        `config.batch_size` integers; each of these indexes a sequence of
+        timestamps to be used in modeling (these sequences are fully determined
+        by the corresponding values in `_start_indices` and `end_indices`). As
+        each batch is consumed, this list is updated to point at a different
+        group of sequences. The `_batch_cursor` is used to keep track of which
+        of the `_num_batches` we're looking at.
+
+        Args:
+            datapath: A string that specifies the full path to a .dat file.
+            config: A ConfigValues object (see configs.py). This is the
+                interface that allows the user to pass settings necessary for
+                building a BatchGenerator (such as which pieces of data to use
+                in for making predictions, what to predict, what to scale by,
+                how to scale, how many observations a Batch should have, etc.);
+                these configurations are either specified at the command line
+                when running deep_quant.py or set in a .conf file (within the
+                `config` directory), and specified at the command line.
+            validation: A boolean. Specifies whether a set of tickers should be
+                randomly picked and set aside for validation or not. (Note that
+                if this is set to True, one can then call the `valid_batches`
+                method and obtain a new `BatchGenerator` object with the
+                validation set as batches. (True by default)
+            require_targets: A boolean. (True by default)
+            data: A Pandas DataFrame from which to generate batches. (None by
+                default)
+            verbose: A boolean. (True by default)
         """
         def init_data_attribute(self, datpath, config, data):
-            """
-            Reads .dat file at `datpath`, gets rid of excess timesteps if
-            necessary.
+            """Initializes `_data`, `_aux_colixs`, and `_data_len`
+
+            Reads .dat file at `datpath` unless a Pandas DataFrame is passed as
+            `data`. Gets rid of excess timesteps if necessary.
             
-            Also encodes each categorial covariate (as specified by
-            `config.categorical_fields`) into its corresponding one-hot
-            representation (as specified by its `field-encoding.dat` file), and
-            appends this representation to the right of the `_data` attribute.
+            If a .dat file was read and any categorical covariates are present
+            (as specified by `config.categorical_fields`), these are encoded
+            into their corresponding one-hot representation (as specified by its
+            `field-encoding.dat` file); this one-hot representation is appended
+            to the right of the `_data` attribute.
+            
+            Initializes the `_aux_colixs` attribute as a list. (If any encoding
+            of categorical covariates takes place, this list is populated with
+            the column indices of the columns that hold the one-hot
+            representation of these.)
             """
             def encode_cat_attrib(data, cat_attrib):
                 """
                 Gets one-hot representation of the categorical attribute under
-                `cat_attrib` column of `self._data`, appends that at
-                right-end of `self._data` dataframe, populates
-                `self._onehot_colnames` and `self._onehot_colixs`.
+                `cat_attrib` column of the `data` DataFrame, appends that at
+                right-end of `data`, returns the updated `data` DataFrame, and a
+                list that contains the column indices of the columns that hold
+                the one-hot representation of `cat_attrib`.
                 """
                 # Load encoding file as Pandas DataFrame
                 encoding_file = "{}-encoding.dat".format(cat_attrib.lower())
@@ -124,40 +169,42 @@ class BatchGenerator(object):
             return
 
         def init_column_indices(self, config):
-            """
-            # TODO: rewrite this docstring
+            """Initializes `_fin_colixs`, `_fin_inputs`, and `aux_inputs`.
+
             Sets up column-index-related attributes and adds a few items to the
             config.
+
             Column-index-related attributes:
-              * _feature_indices: A list housing the column numbers of the features,
-                                  where features are as specified by 
-                                  config.financial_fields.
-              * _aux_indices: A list housing the column numbers of the auxilary
-                              covariates, where these auxilary covariates are
-                              specified by config.aux_fields.
-              * _input_names: A list housing the names of the columns of the 
-                                features _and_ of the auxilary covariates.
-              * _num_inputs: The total number of covariates used as input (so both
-                             those that are specified in config.financial_fields and
-                             those that are specified in config.aux_fields).
-              * _key_idx: The column index of what should be used as a unique
-                          identifier of each company (the index of gvkey, for 
-                          example).
-              * _active_idx: The column index of the field that lets us know whether
-                             a company was actively trading during a specific point
-                             in time or not.
-              * _date_idx: The column index of the date field.
+              * `_fin_colixs`: A list housing the column numbers of the 
+                  features, where features are as specified by
+                  config.financial_fields.
+              * `_aux_colixs`: A list housing the column numbers of the auxilary
+                  covariates, where these auxilary covariates are specified by
+                  config.aux_fields.
+              * `_input_names`: A list housing the names of the columns of the
+                  features _and_ of the auxilary covariates.
+              * `_num_inputs`: The total number of covariates used as input (so 
+                  those that are specified in config.financial_fields, those
+                  that are specified in config.aux_fields, and those specified
+                  in config.categorical_fields).
+              * `_key_idx`: The column index of what should be used as a unique
+                  identifier of each company (the index of gvkey, for example).
+              * `_active_idx`: The column index of the field that lets us know
+                  whether a company was actively trading during a specific point
+                  in time or not.
+              * `_date_idx`: The column index of the date field.
+
             Items added to the config:
-              * num_inputs: same as the _num_inputs attribute
-              * num_ouptus: num_inputs minus the number of aux covariates.
-              * target_idx: index of target variable within the list of features, if
-                            target is specified by config.
+              * `num_inputs`: same as the _num_inputs attribute
+              * `num_ouptus`: num_inputs minus the number of aux covariates.
+              * `target_idx`: index of target variable within the list of
+                  features, if target is specified by config.
             """
             def get_colixs_from_colname_range(data, colname_range):
                 """
-                Returns indexes of columns of data that are in the range of
-                `names`, inclusive. `names` should be a string with the
-                following format: start_column_name-end_column_name
+                Returns indexes of columns of `data` that are in the range of
+                `colname_range`, inclusive. `colname_range` should be a string
+                with the following format: start_column_name-end_column_name
                 (saleq_ttm-ltq_mrq, for example).
                 """
                 if colname_range is None:
@@ -174,8 +221,8 @@ class BatchGenerator(object):
             
             def np_array_index(arr, value):
                 """
-                Replicates the Python list's `index` method (that is, it returns the
-                first appearance of value in the array
+                Replicates the Python list's `index` method (that is, it returns
+                the first appearance of `value` in the array).
                 
                 Raises `ValueError` if `value` is not present in `arr`.
                 """
@@ -231,8 +278,8 @@ class BatchGenerator(object):
             self._aux_inputs = self._data.iloc[:, self._aux_colixs].as_matrix()
 
         def init_validation_set(self, config, validation, verbose=True):
-            """
-            Sets up validation set, if necessary. 
+            """Sets up validation set, if necessary. 
+
             Creates the _validation_set attribute, which is a set housing the
             keys (unique identifier, such as gvkey) of the companies that should
             be used for validation.
@@ -259,38 +306,43 @@ class BatchGenerator(object):
             return
 
         def init_batch_cursor(self, config, require_targets=True, verbose=True):
-            """
-            Sets up indexes into the sequences.  First identifies start and end
-            points of sequences (stored as _start_indices and _end_indices).
-            Then sets up two cursors: 
-              (1) _index_cursor, which is a cursor of 
-                  equally-spaced indices into the dataset. Here, each index
-                  points to a sequence (which can be determined fully using
-                  _data, _start_indices, and _end_indices).  There will be
-                  config.batch_size indices in this list.  
-              (2) _batch_cursor, which keeps track of the batch that we're
+            """Sets up indexes into the sequences.
+
+            First, identifies start and end points of sequences (stored as
+            `_start_indices` and `_end_indices`).
+
+            Then, sets up two cursors: 
+              (1) `_index_cursor`, which is a cursor of equally-spaced indices 
+                  into the dataset. Here, each index points to a sequence (which
+                  can be determined fully using `_data`, `_start_indices`, and
+                  `_end_indices`). There will be config.batch_size indices in
+                  this list.  
+              (2) `_batch_cursor`, which keeps track of the batch that we're
                   working with. (This is just an int that changes as we go
-                  through the dataset in batches.)
+                  through the dataset in batches, and loops around once we've
+                  consumed the entire dataset.)
+
             Note that the number of batches is dictated by the number of
             sequences available and the user-defined size of each batch (as
-            specified in config.batch_size). (The number of sequences available
-            in turn depends on the length of those sequences,
-            config.max_unrollings as well as the size of the dataset).
-            Here, an attribute called _batch_cache is also created. This is a
-            list of size num_batches that will house the contents of each batch
-            once they're cached.
-            Lastly, an attribute called _init_index_cursor is also created. This
-            is simply a copy of _index_cursor in its original state, which will
-            allow us to go back to the start if we need to once _index_cursor
-            has changed.
+            specified in `config.batch_size`). (The number of sequences
+            available in turn depends on the length of those sequences,
+            `config.max_unrollings` as well as the size of the dataset).
+            
+            Here, an attribute called `_batch_cache` is also created. This is a
+            Python list of size `config.num_batches` that will house the
+            contents of each batch (as a `Batch` object) once they're cached.  
+            
+            Lastly, an attribute called `_init_index_cursor` is also created.
+            This is simply a copy of `_index_cursor` in its original state,
+            which will allow us to go back to the start if we need to once
+            `_index_cursor` has changed.
             """
             def store_sequence_start_end_indices(self, data, stride, 
                     forecast_n, min_steps, max_steps, require_targets, config):
                 """
                 Populates the `_start_indices` and `_end_indices` attributes
                 with the start and end index of each possible sequence in
-                `data`, where elements of that sequence are `stride` timesteps
-                apart, and each sequence has at least `min_steps` BLAH BLAH.
+                `data`.
                 """
                 start_date = config.start_date if config.start_date is not None\
                                                                     else 100001
@@ -346,6 +398,7 @@ class BatchGenerator(object):
             self._batch_cache = [None]*self._num_batches
             self._batch_cursor = 0
 
+        # Store configs that'll later be used as attributes
         self._scaling_feature = config.scale_field
         self._scaling_params = None
         self._start_date = config.start_date
@@ -358,15 +411,16 @@ class BatchGenerator(object):
 
         assert self._stride >= 1
         
-        ### INITIALIZE DATA ###
+        # Initialize data
         init_data_attribute(self, datpath, config, data)
         init_column_indices(self, config)
         init_validation_set(self, config, validation, verbose)
 
-        ### INITIALIZE CURSORS ###
+        # Initialize cursors
         init_batch_cursor(self, config, require_targets, verbose)
 
-        self._config = config # save this around for train_batches() method
+        # Save config for the `train_batches` and the `valid_batches` method
+        self._config = config
 
     def _get_normalizer(self, end_idx):
         val = max(self._data.iat[end_idx, self._normalizer_idx], 
@@ -402,7 +456,8 @@ class BatchGenerator(object):
             return np.zeros(shape=[len(self._aux_colixs)])
 			
     def next_batch(self):
-        """
+        """Gets next batch as a Python list of `Batch` objects.
+
         Fetches next batch via the `_next_batch` method (if not already saved),
         saves batch onto the `_batch_cache` attribute list and also returns it.
         Also updates `_batch_cursor` to point to the following batch.
@@ -522,11 +577,12 @@ class BatchGenerator(object):
         return b
 
     def cache(self, verbose=False):
-        """
-        Caches data if not already cached.
+        """Caches data if not already cached.
+
         Does so by either reading cache from a pickled file in the _bcache
-        directory, or by loading the cache (via the `_load_cache` method) and
-        subsequently writing that to the _bcache directory as a pickled file
+        directory, or by loading the cache (via the `load_cache` local function,
+        which in turn relies on the `next_batch` global function), and
+        subsequently writing that to the `_bcache` directory as a pickled file
         for posterity.
         """
         def get_cache_filename(self):
@@ -560,7 +616,7 @@ class BatchGenerator(object):
 
         def load_cache(self, verbose):
             """
-            Caches batches from self by calling the `next_batch()` method
+            Caches batches from `self` by calling the `next_batch` method
             (which writes batch to the list held by the `_batch_cache`
             attribute).
             """

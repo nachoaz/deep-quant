@@ -1,8 +1,7 @@
-# deepquant
+# Deep Quant
 Deep learning on company fundamental data for long-term investing
 
-## Installation and Setup
-
+## Setting up the Environment
 Clone repo, setup environment, and install requirements:
 
 ```shell 
@@ -11,6 +10,15 @@ cd deep-quant
 export DEEP_QUANT_ROOT=`pwd`
 pip3 install -r requirements.txt
 ```
+
+## Preparing the Data
+Do not use models built with this dataset for actually trading or investing.
+This is a freely available dataset assembed from freely available sources and
+may contain errors such as look-ahead bias and survivorship bias.
+
+## Building Models
+
+## Generating Forecasts
 
 ## Running the System Test
 
