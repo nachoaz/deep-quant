@@ -30,7 +30,7 @@ def get_data_path(data_dir, filename):
 
 
 def build_and_write_trimmed_datfile(open_dataset_path, ticlist_path, 
-                                    trimmed_datfile_path):
+                                    featlist_path, trimmed_datfile_path):
     """
     Creates a .dat file by trimming open-dataset.dat so that it contains only
     tickers specified by ticlist file at`ticlist_path`. Writes produced .dat
@@ -68,7 +68,11 @@ def build_and_write_trimmed_datfile(open_dataset_path, ticlist_path,
             
         return gvkeys
 
-    def shave_open_dataset(open_dataset_path, ticlist_path, dest):
+    def get_features_from_featlist(featlist_path):
+        features_df = pd.read_csv(featlist_path)
+        return features_df.iloc[:, 0].values
+
+    def shave_open_dataset(open_dataset_path, ticlist_path, featlist_path, dest):
         """
         Trims wanted data (in terms of tics and features only; the shaving by
         dates is done by BatchGenerator's constructor), stores shaved .dat file
@@ -78,13 +82,14 @@ def build_and_write_trimmed_datfile(open_dataset_path, ticlist_path,
         feat_map.dat file.
         """
         gvkeys = get_gvkeys_from_ticlist(ticlist_path)
+        features = get_features_from_featlist(featlist_path)
         open_df = pd.read_csv(open_dataset_path, sep=' ', dtype={'gvkey': str})
-        shaved_df = open_df[open_df.gvkey.isin(gvkeys)]
+        shaved_df = open_df[open_df.gvkey.isin(gvkeys)][features]
         shaved_df.to_csv(dest, sep=' ', index=False)
         print("Successfully trimmed {} as specified by {}, wrote to {}.".format(
             open_dataset_path, ticlist_path, dest))
 
-    shave_open_dataset(open_dataset_path, ticlist_path, trimmed_datfile_path)
+    shave_open_dataset(open_dataset_path, ticlist_path, featlist_path, trimmed_datfile_path)
 
 
 def load_all_data(config):

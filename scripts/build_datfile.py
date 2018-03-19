@@ -73,14 +73,16 @@ def download_data():
     gunzip_file(gz_path, datfile_path)
 
 
-def main(ticlist, trimmed_datfile_name):
+def main(ticlist, featlist, trimmed_datfile_name):
     open_dataset_path = os.path.join(data_dir, local_file)
     download_data()
     if ticlist is not None:
         ticlist_path = os.path.join(data_dir, ticlist)
+        featlist_path = os.path.join(data_dir, featlist)
         trimmed_datfile_path = os.path.join(data_dir, trimmed_datfile_name)
         build_and_write_trimmed_datfile(open_dataset_path,
                                         ticlist_path,
+                                        featlist_path,
                                         trimmed_datfile_path)
 
 
@@ -93,15 +95,22 @@ if __name__ == '__main__':
                  "file (NOTE: please postfix this with `.dat`)")
 
     parser.add_argument(
+            "--featlist",
+            help="Specifies which features should be in the produced .dat "
+                 "file (NOTE: please postfix this with `.dat`)")
+
+    parser.add_argument(
             "--trimmed_datfile_name",
             help="The name you would like the produced .dat file to have. "
                  "(NOTE: please postfix this with `.dat`)")
 
     args = parser.parse_args()
 
-    if args.ticlist is not None and args.trimmed_datfile_name is None:
+    if (args.ticlist or args.featlist is not None) \
+            and args.trimmed_datfile_name is None:
         parser.error("Please specifiy a trimmed_datfile_name.")
-    elif args.ticlist is None and args.trimmed_datfile_name is not None:
-        parser.error("Please specify a ticlist.")
+    elif (args.ticlist is None or args.featlist is None) \
+            and args.trimmed_datfile_name is not None:
+        parser.error("Please specify a ticlist or featlist.")
 
-    main(args.ticlist, args.trimmed_datfile_name)
+    main(args.ticlist, args.featlist, args.trimmed_datfile_name)

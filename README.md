@@ -53,7 +53,6 @@ example:
 python scripts/build_datfile.py system-test-ticlist.dat system-test-dataset.dat
 ```
 
-
 ## Building Models
 You can train deep quant on a neural network of a particular type and of a
 particular architecture with several other hyperparameters on a particular
@@ -84,8 +83,7 @@ To generate forecasts for the companies in the validation set, `deep_quant.py`
 must be run with the `--train` option set to False. For example:
 
 ```shell
-python scripts/deep_quant.py --config=config/system-test.conf --train=False >
-forecasts.txt
+python scripts/deep_quant.py --config=config/system-test.conf --train=False > forecasts.txt
 ```
 
 That'll produce a file called forecasts.txt with the predicted values for every
