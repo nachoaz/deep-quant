@@ -37,15 +37,18 @@ import time
 
 _GENERATIONS   = 100
 _POP_SIZE      = 40
-_NUM_SURVIVORS = 10
+_NUM_SURVIVORS = 20
 _NUM_GPU       = 4
 _SLEEP_TIME    = 1
-_MUTATE_RATE   = 0.3
+_MUTATE_RATE   = 0.4
 _SHELL         = '/bin/sh'
 _VALID_ERR_IDX = 7
 
 def get_name(gen,i):
-    return "gen-%04d-mem-%04d"%(gen,i);
+    d1 = max(6,len(str(gen)))
+    d2 = max(6,len(str(i)))
+    fmt = 'gen-%0'+str(d1)+'d-mem-%0'+str(d2)+'d';
+    return fmt%(gen,i);
 
 def output_filename(gen,i):
     name = get_name(gen,i)
@@ -128,8 +131,8 @@ def create_train_scripts(pop,gen):
         scriptname = script_filename(gen,gpu)
         with open(scriptname,"w") as f:
             print("#!%s"%_SHELL,file=f)
-            assert(_POP_SIZE%_NUM_GPU==0)
-            m = _POP_SIZE//_NUM_GPU
+            assert(len(pop)%_NUM_GPU==0)
+            m = len(pop)//_NUM_GPU
             pop_idxs = [gpu*m + i for i in range(m)]
             for i in pop_idxs:
                 str = "CUDA_VISIBLE_DEVICES=%d"%gpu
@@ -168,11 +171,11 @@ def train_population(pop,gen):
     assert(type(pop) is list)
     write_population_configs(pop,gen)
     create_train_scripts(pop,gen)
-    execute_train_scripts(pop,gen)
-    poll_for_done(pop,gen)
-    result = generate_results(pop,gen)
+    #execute_train_scripts(pop,gen)
+    #poll_for_done(pop,gen)
+    #result = generate_results(pop,gen)
     # result = generate_results_test(pop,gen)
-    return result
+    #return result
 
 def swap(items,i,j):
     """ Swap two items in a list
@@ -284,43 +287,71 @@ def parse_config(filename):
         config[flag] = elements
     return config
 
-def get_filename():
+def get_args():
     # read and populate configuration
-    parser = ap.ArgumentParser(description="Hyper Parameter Search")
-    parser.add_argument("--config", help="Configuration file", required=True)
+    parser = ap.ArgumentParser(description='Hyper Parameter Search')
+    parser.add_argument('--template', help='Configuration file', required=True)
+    parser.add_argument('--genetic', dest='genetic', action='store_true', help='Use Genetic Algo')
+    parser.set_defaults(genetic=False)
     args = vars(parser.parse_args())
-    config_filename = args['config']
-    return config_filename
+    return args
 
-def main():
-    config_filename = get_filename()
+def execute_genetic_search(args):
+    config_filename = args['template']
     # config is a dict of lists
     config = parse_config(config_filename)
     
     random.seed(config['--seed'][0])
-  
+    
     print("Seaching on the following configs:")
     for flag in config:
         if (len(config[flag]) > 1):
             print("  %s -> (%s)"%(flag,','.join(config[flag])))
 
     results = [float('inf')]*_POP_SIZE
+
     pop = init_population(config)
     best = None
-
-
     for i in range(_GENERATIONS):
         gen = i+1
         result = train_population(pop,gen)
         print('*'*80)
         print(result)
         (pop,new_best) = get_next_generation(pop,gen,result)
-        if best is None or best[0] >= new_best[0]:
+        if best is None or best[0] > new_best[0]:
             best = new_best
         name = best[1]['--name'][0]
         error = best[0]
         print("Generation: %s Best: %s Error: %s"%(gen,name,error))
 
+def get_all_config_permutations(src,tbl,i,result):
+    flags = [f for f in sorted(src)]
+    if i == len(flags):
+        result.append(tbl)
+    else:
+        flag = flags[i]
+        curr = src[flag]
+        for param in curr:
+            new_tbl = tbl.copy()
+            new_tbl[flag] = [param]
+            get_all_config_permutations(src,new_tbl,i+1,result)
+        
+def execute_grid_search(args):
+    config_filename = args['template']
+    # config is a dict of lists
+    config = parse_config(config_filename)
+    result = list()
+    tbl = dict()
+    get_all_config_permutations(config,tbl,0,result)
+    train_population(result,0)
 
+def main():
+    args = get_args()
+
+    if args['genetic'] is True:
+        execute_genetic_search(args)
+    else:
+        execute_grid_search(args)
+        
 if __name__ == "__main__":
     main()

@@ -53,7 +53,7 @@ def predict(config):
 
     with tf.Graph().as_default(), tf.Session(config=tf_config) as session:
 
-        model = model_utils.get_model(session, config, verbose=False)
+        model = model_utils.get_model(session, config, verbose=True)
 
         perfs = dict()
 
@@ -61,7 +61,7 @@ def predict(config):
             batch = batches.next_batch()
 
             (mse, preds) = model.step(session, batch)
-            # (mse, preds) = model.test_step(session, batch)
+            # (mse, preds) = model.debug_step(session, batch)
 
             if math.isnan(mse) is False:
                 date = batch_to_date(batch)
