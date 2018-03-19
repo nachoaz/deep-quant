@@ -13,8 +13,8 @@ import random
 import tensorflow as tf
 import regex as re
 
-from prettified_batch_generator import BatchGenerator as PrettyBatchGenerator
-from batch_generator import BatchGenerator  # this is the old one
+sys.path.append('../')
+from batch_generator import BatchGenerator
 from utils import data_utils, model_utils
 from deep_quant import get_configs
 from train import run_epoch
@@ -61,32 +61,20 @@ def set_configs(config, params):
     config.cache_id = None
 
 
-def load_all_data(config, pretty, verbose):
-    """
-    Returns all data as a BatchGenerator object.
-    """
-    data_path = data_utils.get_data_path(config.data_dir, config.datafile)
-    if pretty:
-        batches = PrettyBatchGenerator(data_path, config, verbose=verbose)
-    else:
-        batches = BatchGenerator(data_path, config, verbose=verbose)
-
-    return batches
-
-
-def load_train_valid_data(config, pretty, verbose):
+def load_train_valid_data(config, verbose):
     """
     Returns train_data and valid_data, both as BatchGenerator objects.
     """
-    batches = load_all_data(config, pretty, verbose)
+    data_path = data_utils.get_data_path(config.data_dir, config.datafile)
+    batches = BatchGenerator(data_path, config, verbose=verbose)
     train_data = batches.train_batches()
     valid_data = batches.valid_batches()
     return train_data, valid_data
 
 
-def train_model(config, pretty=False, verbose=True):
+def train_model(config, verbose=True):
     print("\nLoading training data ...")
-    train_data, valid_data = load_train_valid_data(config, pretty, verbose)
+    train_data, valid_data = load_train_valid_data(config, verbose)
 
     if config.start_date is not None:
         print("Training start date: ", config.start_date)
