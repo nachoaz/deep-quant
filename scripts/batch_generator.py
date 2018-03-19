@@ -148,7 +148,8 @@ class BatchGenerator(object):
 
                 # Get one-hot representation of each example's `cat_attrib`
                 onehot_enc = OneHotEncoder(n_values=len(cat_enc.classes_))
-                onehot_vecs = onehot_enc.fit_transform(codes).toarray()
+                onehot_enc.fit(encoding_df['code'].values.reshape(-1, 1))
+                onehot_vecs = onehot_enc.transform(codes).toarray()
                 onehot_colnames = ['is_' + lev for lev in cat_enc.classes_]
 
                 # Write all one-hot columns on the right side
@@ -177,10 +178,9 @@ class BatchGenerator(object):
             else:
                 # Simply get the column indices of the one-hot columns
                 for cat_attrib in cat_attribs:
-                    levels = set(data[cat_attrib].values)
-                    colnames = data.columns.values
-                    onehot_colixs = sorted([np_array_index(colnames, 'is_'+level)\
-                                     for level in levels])
+                    onehot_colixs = [i for i, col \
+                                     in enumerate(data.columns.values) \
+                                     if col.startswith('is_')]
             
             self._aux_colixs += onehot_colixs
 
