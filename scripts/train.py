@@ -107,27 +107,23 @@ def train_model(config):
             scaling_params = train_data.get_scaling_params(config.data_scaler)
             model.set_scaling_params(session,**scaling_params)
             print("done in %.2f seconds."%(time.time() - start_time))
-            #print(scaling_params['center'])
-            #print(scaling_params['scale'])
-            #exit(0)
 
         if config.early_stop is not None:
             print("Training will early stop without "
-              "improvement after %d epochs."%config.early_stop)
+                  "improvement after %d epochs." % config.early_stop)
 
         train_history = list()
         valid_history = list()
 
-        lr = model.set_learning_rate(session,config.learning_rate)
+        lr = model.set_learning_rate(session, config.learning_rate)
 
         train_data.cache(verbose=True)
         valid_data.cache(verbose=True)
 
         for i in range(config.max_epoch):
-
             (train_mse, valid_mse) = run_epoch(session, model, train_data, valid_data,
-                                                keep_prob=config.keep_prob, passes=config.passes,
-                                                verbose=True)
+                                               keep_prob=config.keep_prob, passes=config.passes,
+                                               verbose=True)
             print( ('Epoch: %d Train MSE: %.6f Valid MSE: %.6f Learning rate: %.4f') %
                   (i + 1, train_mse, valid_mse, lr) )
             sys.stdout.flush()
